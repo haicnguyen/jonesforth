@@ -3,32 +3,22 @@
   and the assembler primitives.
   $Id: perf_dupdrop.f,v 1.3 2007-10-12 01:46:26 rich Exp $ )
 
-1024 32 * MORECORE
+1024 16 * MORECORE
 
 ( Print the time passed. )
-: PRINT-TIME	( lsb msb lsb msb -- lsb lsb )
-	( The test is very short so likely the MSBs will be the same.  This
-	  makes calculating the time easier (because we can only do 32 bit
-	    subtraction).  So check MSBs are equal. )
-	2 PICK <> IF
-		." MSBs not equal, please repeat the test" CR
-	ELSE
-		NIP
-		SWAP - U. CR
-	THEN
+: PRINT-TIME	( start end -- )
+	SWAP - U. CR
 ;
-
-: 4DROP DROP DROP DROP DROP ;
 
 : PERFORM-TEST	( xt -- )
 	( Get everything in the cache. )
-	DUP EXECUTE 4DROP
-	DUP EXECUTE 4DROP
-	DUP EXECUTE 4DROP
-	DUP EXECUTE 4DROP
-	DUP EXECUTE 4DROP
-	DUP EXECUTE 4DROP
-	0 0 0 0 PRINT-TIME
+	DUP EXECUTE 2DROP
+	DUP EXECUTE 2DROP
+	DUP EXECUTE 2DROP
+	DUP EXECUTE 2DROP
+	DUP EXECUTE 2DROP
+	DUP EXECUTE 2DROP
+	0 0 PRINT-TIME
 	( Run the test 10 times. )
 	DUP EXECUTE PRINT-TIME
 	DUP EXECUTE PRINT-TIME
@@ -50,7 +40,7 @@
 ;
 
 ( Now the actual test routine. )
-: TEST		( -- startlsb startmsb endlsb endmsb )
+: TEST		( -- start end )
 	RDTSC			( Start time )
 	[ 1000 MAKE-DUPDROP ]	( 1000 * DUP DROP )
 	RDTSC			( End time )

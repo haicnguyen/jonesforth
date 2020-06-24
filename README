@@ -1,1 +1,10 @@
-This is a backup of the Richard Jones forth great effort.
+This is a port of Richard Jones forth to x86-64 assembly.
+
+Changes since version 47:
+Port to x86-64 assembler.
+Add very basic disassembler.
+Link slightly stripped FORTH code into binary for a standalone executable.
+Added: /STRING ABS CELL+ COMPARE COUNT FILL MAX MIN MOVE NAME>STRING ROLL TRAVERSE-WORDLIST
+Enhanced: ' SEE RDTSC
+Renamed: TELL -> TYPE
+Removed: 4+ 4-

@@ -6,12 +6,12 @@
 #include <stdlib.h>
 
 #define DUP					\
-  asm volatile ("mov (%%esp),%%eax\n"		\
-		"\tpush %%eax"			\
-		: : : "eax")
+  asm volatile ("mov (%%rsp),%%rax\n"		\
+		"\tpush %%rax"			\
+		: : : "rax")
 #define DROP					\
-  asm volatile ("pop %%eax"			\
-		: : : "eax")
+  asm volatile ("pop %%rax"			\
+		: : : "rax")
 
 #define DUPDROP DUP; DROP;
 #define DUPDROP10 DUPDROP DUPDROP DUPDROP DUPDROP DUPDROP DUPDROP DUPDROP DUPDROP DUPDROP DUPDROP

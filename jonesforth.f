@@ -1,5 +1,5 @@
 \ -*- text -*-
-\	A sometimes minimal FORTH compiler and tutorial for Linux / i386 systems. -*- asm -*-
+\	A sometimes minimal FORTH compiler and tutorial for Linux / x86-64 systems. -*- asm -*-
 \	By Richard W.M. Jones <rich@annexia.org> http://annexia.org/forth
 \	This is PUBLIC DOMAIN (see public domain release statement below).
 \	$Id: jonesforth.f,v 1.18 2009-09-11 08:32:33 rich Exp $
@@ -45,14 +45,15 @@
 \	FORTH is case-sensitive.  Use capslock!
 
 \ The primitive word /MOD (DIVMOD) leaves both the quotient and the remainder on the stack.  (On
-\ i386, the idivl instruction gives both anyway).  Now we can define the / and MOD in terms of /MOD
+\ x86-64, the idivq instruction gives both anyway).  Now we can define the / and MOD in terms of /MOD
 \ and a few other primitives.
-: / /MOD SWAP DROP ;
+: / /MOD NIP ;
 : MOD /MOD DROP ;
 
 \ Define some character constants
 : '\n' 10 ;
-: BL   32 ; \ BL (BLank) is a standard FORTH word for space.
+\ BL (BLank) is a standard FORTH word for space.
+: BL   32 ;
 
 \ CR prints a carriage return
 : CR '\n' EMIT ;
@@ -72,7 +73,7 @@
 : LITERAL IMMEDIATE
 	' LIT ,		\ compile LIT
 	,		\ compile the literal itself (from the stack)
-	;
+;
 
 \ Now we can use [ and ] to insert literals which are calculated at compile time.  (Recall that
 \ [ and ] are the FORTH words which switch into and out of immediate mode.)
@@ -142,8 +143,7 @@
 ;
 
 : THEN IMMEDIATE
-	DUP
-	HERE @ SWAP -	\ calculate the offset from the address saved on the stack
+	HERE @ OVER -	\ calculate the offset from the address saved on the stack
 	SWAP !		\ store the offset in the back-filled location
 ;
 
@@ -152,10 +152,22 @@
 	HERE @		\ save location of the offset on the stack
 	0 ,		\ compile a dummy offset
 	SWAP		\ now back-fill the original (IF) offset
-	DUP		\ same as for THEN word above
-	HERE @ SWAP -
+	HERE @ OVER -
 	SWAP !
 ;
+
+\ a version of ' that also works in interpretation mode
+: ' IMMEDIATE
+	STATE @ IF
+		' ' ,
+	ELSE
+		WORD FIND >CFA
+	THEN
+;
+
+: ABS DUP 0< IF NEGATE THEN ;
+: MIN 2DUP < IF DROP ELSE NIP THEN ;
+: MAX 2DUP > IF DROP ELSE NIP THEN ;
 
 \ BEGIN loop-part condition UNTIL
 \	-- compiles to: --> loop-part condition 0BRANCH OFFSET
@@ -229,8 +241,7 @@
 				1-		\ depth decreases
 			THEN
 		THEN
-	DUP 0= UNTIL		\ continue until we reach matching close paren, depth 0
-	DROP		\ drop the depth counter
+	?DUP 0= UNTIL		\ continue until we reach matching close paren, depth 0
 ;
 
 (
@@ -248,13 +259,14 @@
 )
 
 ( Some more complicated stack examples, showing the stack notation. )
-: NIP ( x y -- y ) SWAP DROP ;
 : TUCK ( x y -- y x y ) SWAP OVER ;
-: PICK ( x_u ... x_1 x_0 u -- x_u ... x_1 x_0 x_u )
-	1+		( add one because of 'u' on the stack )
-	4 *		( multiply by the word size )
-	DSP@ +		( add to the stack pointer )
-	@    		( and fetch )
+
+: ROLL ( x[u] x[u-1] ... x[0] u -- x[u-1] ... x[0] x[u] )
+	DUP 0<= IF
+		DROP
+	ELSE
+		SWAP >R 1- RECURSE R> SWAP
+	THEN
 ;
 
 ( With the looping constructs, we can now write SPACES, which writes n spaces to stdout. )
@@ -330,7 +342,7 @@
 	WHILE
 		DUP @ U.	( print the stack element )
 		SPACE
-		4+		( move up )
+		CELL+		( move up )
 	REPEAT
 	DROP
 ;
@@ -419,16 +431,17 @@
 ;
 
 ( DEPTH returns the depth of the stack. )
-: DEPTH		( -- n )
+: DEPTH	( -- n )
 	S0 @ DSP@ -
-	4-			( adjust because S0 was on the stack when we pushed DSP )
+	1 CELLS /
+	1-
 ;
 
 (
-	ALIGNED takes an address and rounds it up (aligns it) to the next 4 byte boundary.
+	ALIGNED takes an address and rounds it up (aligns it) to the next 8 byte boundary.
 )
 : ALIGNED	( addr -- addr )
-	3 + 3 INVERT AND	( (addr+3) & ~3 )
+	7 + 7 INVERT AND	( (addr+7) & ~7 )
 ;
 
 (
@@ -448,7 +461,7 @@
 	detect this and do different things).
 
 	In compile mode we append
-		LITSTRING <string length> <string rounded up 4 bytes>
+		LITSTRING <string length> <string rounded up 8 bytes>
 	to the current word.  The primitive LITSTRING does the right thing when the current
 	word is executed.
 
@@ -476,9 +489,9 @@
 		DROP		( drop the double quote character at the end )
 		DUP		( get the saved address of the length word )
 		HERE @ SWAP -	( calculate the length )
-		4-		( subtract 4 (because we measured from the start of the length word) )
+		1 CELLS -		( subtract 8 (because we measured from the start of the length word) )
 		SWAP !		( and back-fill the length location )
-		ALIGN		( round up to next multiple of 4 bytes for the remaining code )
+		ALIGN		( round up to next multiple of 8 bytes for the remaining code )
 	ELSE		( immediate mode )
 		HERE @		( get the start address of the temporary space )
 		BEGIN
@@ -495,6 +508,12 @@
 	THEN
 ;
 
+( TYPE just prints a string )
+: TYPE ( c-addr u -- )
+	SWAP 1 SYS_WRITE SYSCALL3
+	DROP
+;
+
 (
 	." is the print string operator in FORTH.  Example: ." Something to print"
 	The space after the operator is the ordinary space required between words and is not
@@ -503,8 +522,8 @@
 	In immediate mode we just keep reading characters and printing them until we get to
 	the next double quote.
 
-	In compile mode we use S" to store the string, then add TELL afterwards:
-		LITSTRING <string length> <string rounded up to 4 bytes> TELL
+	In compile mode we use S" to store the string, then add TYPE afterwards:
+	LITSTRING <string length> <string rounded up to 8 bytes> TYPE
 
 	It may be interesting to note the use of [COMPILE] to turn the call to the immediate
 	word S" into compilation of that word.  It compiles it into the definition of .",
@@ -514,7 +533,7 @@
 : ." IMMEDIATE		( -- )
 	STATE @ IF	( compiling? )
 		[COMPILE] S"	( read the string, and compile LITSTRING, etc. )
-		' TELL ,	( compile the final TELL )
+		' TYPE ,	( compile the final TYPE )
 	ELSE
 		( In immediate mode, just read characters and print them until we get
 		  to the ending double quote. )
@@ -527,6 +546,44 @@
 			EMIT
 		AGAIN
 	THEN
+;
+
+: COUNT	( c-addr1 -- c-addr2 u )
+	DUP 1+ SWAP C@
+;
+
+: cmp 2DUP > IF 2DROP 1 ELSE < IF -1 ELSE 0 THEN THEN ;
+
+( compare two strings )
+: COMPARE ( c-addr1 u1 c-addr2 u2 -- n )               \ STRING
+	ROT 2DUP >R >R
+	MIN          ( c-addr1 c-addr2 n )
+	FALSE
+	BEGIN
+		DROP
+		DUP 0= IF
+			DROP 2DROP
+			R> R> cmp
+			EXIT
+		THEN
+		( c-addr1 c-addr2 n )
+		1-
+		ROT COUNT >R      ( c-addr2 n c-addr1' )  ( r: ch1 )
+		ROT COUNT >R
+		ROT R> R>
+		cmp
+		DUP
+	UNTIL
+	RDROP RDROP
+	NIP NIP NIP
+;
+
+HIDE cmp
+
+: /STRING ( c-addr1 u1 n -- c-addr2 u2 )
+	DUP ROT SWAP -
+	-ROT +
+	SWAP
 ;
 
 (
@@ -615,20 +672,13 @@
 	arbitrary memory from the user memory.
 
 	First ALLOT, where n ALLOT allocates n bytes of memory.  (Note when calling this that
-	it's a very good idea to make sure that n is a multiple of 4, or at least that next time
-	a word is compiled that HERE has been left as a multiple of 4).
+	it's a very good idea to make sure that n is a multiple of 8, or at least that next time
+	a word is compiled that HERE has been left as a multiple of 8).
 )
 : ALLOT		( n -- addr )
 	HERE @ SWAP	( here n )
 	HERE +!		( adds n to HERE, after this the old value of HERE is still on the stack )
 ;
-
-(
-	Second, CELLS.  In FORTH the phrase 'n CELLS ALLOT' means allocate n integers of whatever size
-	is the natural size for integers on this machine architecture.  On this 32 bit machine therefore
-	CELLS just multiplies the top of stack by 4.
-)
-: CELLS ( n -- n ) 4 * ;
 
 (
 	So now we can define VARIABLE easily in much the same way as CONSTANT above.  Refer to the
@@ -706,7 +756,7 @@
 	WORD		( get the name of the value )
 	FIND		( look it up in the dictionary )
 	>DFA		( get a pointer to the first data field (the 'LIT') )
-	4+		( increment to point at the value )
+	CELL+		( increment to point at the value )
 	STATE @ IF	( compiling? )
 		' LIT ,		( compile LIT )
 		,		( compile the address of the value )
@@ -721,7 +771,7 @@
 	WORD		( get the name of the value )
 	FIND		( look it up in the dictionary )
 	>DFA		( get a pointer to the first data field (the 'LIT') )
-	4+		( increment to point at the value )
+	CELL+		( increment to point at the value )
 	STATE @ IF	( compiling? )
 		' LIT ,		( compile LIT )
 		,		( compile the address of the value )
@@ -738,20 +788,15 @@
 
 	For example: LATEST @ ID. would print the name of the last word that was defined.
 )
-: ID.
-	4+		( skip over the link pointer )
-	DUP C@		( get the flags/length byte )
-	F_LENMASK AND	( mask out the flags - just want the length )
+: NAME>STRING
+	CELL+		        	( skip over the link pointer )
+	DUP C@				( get the flags/length byte )
+	F_LENMASK AND			( mask out the flags - just want the length )
+	SWAP 1+ SWAP			( skip flags/length byte )
+;
 
-	BEGIN
-		DUP 0>		( length > 0? )
-	WHILE
-		SWAP 1+		( addr len -- len addr+1 )
-		DUP C@		( len addr -- len addr char | get the next character)
-		EMIT		( len addr char -- len addr | and print it)
-		SWAP 1-		( len addr -- addr len-1    | subtract one from length )
-	REPEAT
-	2DROP		( len addr -- )
+: ID.
+	NAME>STRING TYPE
 ;
 
 (
@@ -760,35 +805,56 @@
 	'WORD word FIND ?IMMEDIATE' returns true if 'word' is flagged as immediate.
 )
 : ?HIDDEN
-	4+		( skip over the link pointer )
+	CELL+		( skip over the link pointer )
 	C@		( get the flags/length byte )
 	F_HIDDEN AND	( mask the F_HIDDEN flag and return it (as a truth value) )
 ;
 : ?IMMEDIATE
-	4+		( skip over the link pointer )
+	CELL+		( skip over the link pointer )
 	C@		( get the flags/length byte )
 	F_IMMED AND	( mask the F_IMMED flag and return it (as a truth value) )
 ;
+
+0 VALUE WID
+0 VALUE XT
+
+: TRAVERSE-WORDLIST ( i*x xt wid -- i*x' )
+	TO WID TO XT			( clear the stack )
+	BEGIN
+		WID 0<>
+	WHILE
+		WID ?HIDDEN
+		WID CELL+ C@ F_LENMASK AND 0=
+		OR UNLESS	( skip hidden words )
+			WID XT EXECUTE UNLESS
+				EXIT
+			THEN
+		THEN
+		WID @ TO WID		( follow the link pointer )
+	REPEAT
+;
+
+HIDE XT
+HIDE WID
 
 (
 	WORDS prints all the words defined in the dictionary, starting with the word defined most recently.
 	However it doesn't print hidden words.
 
-	The implementation simply iterates backwards from LATEST using the link pointers.
+	The implementation uses TRAVERSE-WORDLIST to iterate over all words reachable from LATEST.
 )
-: WORDS
-	LATEST @	( start at LATEST dictionary entry )
-	BEGIN
-		?DUP		( while link pointer is not null )
-	WHILE
-		DUP ?HIDDEN NOT IF	( ignore hidden words )
-			DUP ID.		( but if not hidden, print the word )
-			SPACE
-		THEN
-		@		( dereference the link pointer - go to previous word )
-	REPEAT
-	CR
+: PRINT-ID
+	DUP
+	ID.
+	@ 0<> IF SPACE THEN		( is this the last word? )
+	TRUE
 ;
+
+: WORDS
+	' PRINT-ID LATEST @ TRAVERSE-WORDLIST CR
+;
+
+HIDE PRINT-ID
 
 (
 	FORGET ----------------------------------------------------------------------
@@ -1003,6 +1069,16 @@
 	0		( sorry, nothing found )
 ;
 
+HEX
+: =NEXT		( addr -- next? )
+	   DUP C@ 48 <> IF DROP FALSE EXIT THEN
+	1+ DUP C@ AD <> IF DROP FALSE EXIT THEN
+	1+ DUP C@ FF <> IF DROP FALSE EXIT THEN
+	1+     C@ 20 <> IF      FALSE EXIT THEN
+	TRUE
+;
+DECIMAL
+
 (
 	SEE decompiles a FORTH word.
 
@@ -1019,10 +1095,116 @@
 	With this information we can have a go at decompiling the word.  We need to
 	recognise "meta-words" like LIT, LITSTRING, BRANCH, etc. and treat those separately.
 )
-: SEE
-	WORD FIND	( find the dictionary entry to decompile )
 
-	( Now we search again, looking for the next word in the dictionary.  This gives us
+HEX
+: 32@
+        DUP C@
+        OVER 1 + C@ 100 * +
+        OVER 2 + C@ 10000 * +
+        OVER 3 + C@ 1000000 * +
+        NIP
+;
+
+: TYPE-REGISTER ( reg -- )
+	CASE
+	0 OF ." RAX " ENDOF
+	1 OF ." RCX " ENDOF
+	2 OF ." RDX " ENDOF
+	3 OF ." RBX " ENDOF
+	4 OF ." RSP " ENDOF
+	5 OF ." RBP " ENDOF
+	6 OF ." RSI " ENDOF
+	7 OF ." RDI " ENDOF
+	ENDCASE
+;
+
+: SEE-ASSEMBLY ( word -- )
+	>CFA @					( code )
+
+	BEGIN
+		DUP =NEXT NOT
+	WHILE
+		DUP C@				( code byte0 )
+
+		CASE
+		48 OF		( REX/W )	
+			DUP 1+ C@		( code byte1 )
+
+			CASE
+			89 OF   ( Opcode )
+				DUP 2 + C@      ( code byte2 )
+				C0 AND C0 = IF
+					DUP 2 + C@      ( code byte2 )
+					C0 XOR
+					DUP 3 RSHIFT
+					SWAP 7 AND
+					2
+					BEGIN
+						DUP 0>
+					WHILE
+						SWAP
+						TYPE-REGISTER
+						1-
+					REPEAT
+					DROP
+
+					." MOVQ "
+
+					2 +
+				ELSE
+					." [ 48 C, 89 C, ] "
+					1+
+				THEN
+			ENDOF
+			A5 OF
+				." MOVSQ "
+				1+
+			ENDOF
+			AB OF
+				." STOSQ "
+				1+
+			ENDOF
+			AD OF
+				." LODSQ "
+				1+
+			ENDOF
+				." [ 48 C, ] "
+			ENDCASE
+		ENDOF
+		50 OF ." RAX PUSH " ENDOF
+		51 OF ." RCX PUSH " ENDOF
+		52 OF ." RDX PUSH " ENDOF
+		53 OF ." RBX PUSH " ENDOF
+		54 OF ." RSP PUSH " ENDOF
+		55 OF ." RBP PUSH " ENDOF
+		56 OF ." RSI PUSH " ENDOF
+		57 OF ." RDI PUSH " ENDOF
+		58 OF ." RAX POP " ENDOF
+		59 OF ." RCX POP " ENDOF
+		5A OF ." RDX POP " ENDOF
+		5B OF ." RBX POP " ENDOF
+		5C OF ." RSP POP " ENDOF
+		5D OF ." RBP POP " ENDOF
+		5E OF ." RSI POP " ENDOF
+		5F OF ." RDI POP " ENDOF
+		A4 OF ." MOVSB " ENDOF
+		AA OF ." STOSB " ENDOF
+		E8 OF DUP 1+ 32@ . ." CALL " 4 + ENDOF
+		F3 OF ." REP " ENDOF
+			." [ " DUP . ." C, ] "
+		ENDCASE
+		1+
+	REPEAT
+
+	." ;CODE "
+
+	DROP
+;
+HIDE 32@
+HIDE TYPE-REGISTER
+
+: SEE-FORTH ( word -- )
+	( Now we search, looking for the next word in the dictionary.  This gives us
 	  the length of the word that we will be decompiling.  (Well, mostly it does). )
 	HERE @		( address of the end of the last compiled word )
 	LATEST @	( word last curr )
@@ -1038,10 +1220,6 @@
 	DROP		( at this point, the stack is: start-of-word end-of-word )
 	SWAP		( end-of-word start-of-word )
 
-	( begin the definition with : NAME [IMMEDIATE] )
-	':' EMIT SPACE DUP ID. SPACE
-	DUP ?IMMEDIATE IF ." IMMEDIATE " THEN
-
 	>DFA		( get the data address, ie. points after DOCOL | end-of-word start-of-data )
 
 	( now we start decompiling until we hit the end of the word )
@@ -1052,33 +1230,33 @@
 
 		CASE
 		' LIT OF		( is it LIT ? )
-			4 + DUP @		( get next word which is the integer constant )
+			CELL+ DUP @		( get next word which is the integer constant )
 			.			( and print it )
 		ENDOF
 		' LITSTRING OF		( is it LITSTRING ? )
 			[ CHAR S ] LITERAL EMIT '"' EMIT SPACE ( print S"<space> )
-			4 + DUP @		( get the length word )
-			SWAP 4 + SWAP		( end start+4 length )
-			2DUP TELL		( print the string )
+			CELL+ DUP @		( get the length word )
+			SWAP CELL+ SWAP		( end start+8 length )
+			2DUP TYPE		( print the string )
 			'"' EMIT SPACE		( finish the string with a final quote )
-			+ ALIGNED		( end start+4+len, aligned )
-			4 -			( because we're about to add 4 below )
+			+ ALIGNED		( end start+8+len, aligned )
+			1 CELLS -			( because we're about to add 8 below )
 		ENDOF
 		' 0BRANCH OF		( is it 0BRANCH ? )
 			." 0BRANCH ( "
-			4 + DUP @		( print the offset )
+			CELL+ DUP @		( print the offset )
 			.
 			." ) "
 		ENDOF
 		' BRANCH OF		( is it BRANCH ? )
 			." BRANCH ( "
-			4 + DUP @		( print the offset )
+			CELL+ DUP @		( print the offset )
 			.
 			." ) "
 		ENDOF
 		' ' OF			( is it ' (TICK) ? )
 			[ CHAR ' ] LITERAL EMIT SPACE
-			4 + DUP @		( get the next codeword )
+			CELL+ DUP @		( get the next codeword )
 			CFA>			( and force it to be printed as a dictionary entry )
 			ID. SPACE
 		ENDOF
@@ -1087,7 +1265,7 @@
 			  because EXIT is normally implied by ;.  EXIT can also appear in the middle
 			  of words, and then it needs to be printed. )
 			2DUP			( end start end start )
-			4 +			( end start end start+4 )
+			CELL+			( end start end start+8 )
 			<> IF			( end start | we're not at the end )
 				." EXIT "
 			THEN
@@ -1098,13 +1276,33 @@
 			ID. SPACE		( and print it )
 		ENDCASE
 
-		4 +		( end start+4 )
+		CELL+		( end start+8 )
 	REPEAT
 
-	';' EMIT CR
+	';' EMIT
 
 	2DROP		( restore stack )
 ;
+
+: SEE
+	WORD FIND	( find the dictionary entry to decompile )
+
+	( begin the definition with : NAME [IMMEDIATE] )
+	':' EMIT SPACE DUP ID. SPACE
+	DUP ?IMMEDIATE IF ." IMMEDIATE " THEN
+
+	DUP >CFA @ DOCOL = IF           ( this is a FORTH word )
+		SEE-FORTH
+	ELSE
+		SEE-ASSEMBLY
+	THEN
+
+	CR
+;
+DECIMAL
+
+HIDE SEE-ASSEMBLY
+HIDE SEE-FORTH
 
 (
 	EXECUTION TOKENS ----------------------------------------------------------------------
@@ -1286,8 +1484,8 @@
 ;
 
 : CATCH		( xt -- exn? )
-	DSP@ 4+ >R		( save parameter stack pointer (+4 because of xt) on the return stack )
-	' EXCEPTION-MARKER 4+	( push the address of the RDROP inside EXCEPTION-MARKER ... )
+	DSP@ CELL+ >R		( save parameter stack pointer (+8 because of xt) on the return stack )
+	' EXCEPTION-MARKER CELL+	( push the address of the RDROP inside EXCEPTION-MARKER ... )
 	>R			( ... on to the return stack so it acts like a return address )
 	EXECUTE			( execute the nested function )
 ;
@@ -1296,23 +1494,23 @@
 	?DUP IF			( only act if the exception code <> 0 )
 		RSP@ 			( get return stack pointer )
 		BEGIN
-			DUP R0 4- <		( RSP < R0 )
+			DUP R0 1 CELLS - <		( RSP < R0 )
 		WHILE
 			DUP @			( get the return stack entry )
-			' EXCEPTION-MARKER 4+ = IF	( found the EXCEPTION-MARKER on the return stack )
-				4+			( skip the EXCEPTION-MARKER on the return stack )
+			' EXCEPTION-MARKER CELL+ = IF	( found the EXCEPTION-MARKER on the return stack )
+				CELL+			( skip the EXCEPTION-MARKER on the return stack )
 				RSP!			( restore the return stack pointer )
 
 				( Restore the parameter stack. )
 				DUP DUP DUP		( reserve some working space so the stack for this word
 							  doesn't coincide with the part of the stack being restored )
 				R>			( get the saved parameter stack pointer | n dsp )
-				4-			( reserve space on the stack to store n )
+				1 CELLS -		( reserve space on the stack to store n )
 				SWAP OVER		( dsp n dsp )
 				!			( write n on the stack )
 				DSP! EXIT		( restore the parameter stack pointer, immediately exit )
 			THEN
-			4+
+			CELL+
 		REPEAT
 
 		( No matching catch - print a message and restart the INTERPRETer. )
@@ -1338,13 +1536,13 @@
 : PRINT-STACK-TRACE
 	RSP@				( start at caller of this function )
 	BEGIN
-		DUP R0 4- <		( RSP < R0 )
+		DUP R0 1 CELLS - <		( RSP < R0 )
 	WHILE
 		DUP @			( get the return stack entry )
 		CASE
-		' EXCEPTION-MARKER 4+ OF	( is it the exception stack frame? )
+		' EXCEPTION-MARKER CELL+ OF	( is it the exception stack frame? )
 			." CATCH ( DSP="
-			4+ DUP @ U.		( print saved stack pointer )
+			CELL+ DUP @ U.		( print saved stack pointer )
 			." ) "
 		ENDOF
 						( default case )
@@ -1354,14 +1552,225 @@
 				2DUP			( dea addr dea )
 				ID.			( print word from dictionary entry )
 				[ CHAR + ] LITERAL EMIT
-				SWAP >DFA 4+ - .	( print offset )
+				SWAP >DFA CELL+ - .	( print offset )
 			THEN
 		ENDCASE
-		4+			( move up the stack )
+		CELL+			( move up the stack )
 	REPEAT
 	DROP
 	CR
 ;
+
+(
+	ASSEMBLER CODE ----------------------------------------------------------------------
+
+	This is just the outline of a simple assembler, allowing you to write FORTH primitives
+	in assembly language.
+
+	Assembly primitives begin ': NAME' in the normal way, but are ended with ;CODE.  ;CODE
+	updates the header so that the codeword isn't DOCOL, but points instead to the assembled
+	code (in the DFA part of the word).
+
+	We provide a convenience macro NEXT (you guessed what it does).  However you don't need to
+	use it because ;CODE will put a NEXT at the end of your word.
+
+	The rest consists of some immediate words which expand into machine code appended to the
+	definition of the word.  Only a very tiny part of the x86-64 assembly space is covered, just
+	enough to write a few assembler primitives below.
+)
+
+HEX
+
+( Equivalent to the NEXT macro )
+: NEXT IMMEDIATE 48 C, AD C, FF C, 20 C, ;
+
+: ;CODE IMMEDIATE
+	[COMPILE] NEXT		( end the word with NEXT macro )
+	ALIGN			( machine code is assembled in bytes so isn't necessarily aligned at the end )
+	LATEST @ DUP
+	HIDDEN			( unhide the word )
+	DUP >DFA SWAP >CFA !	( change the codeword to point to the data area )
+	[COMPILE] [		( go back to immediate mode )
+;
+
+( The registers )
+: RAX IMMEDIATE 0 ;
+: RCX IMMEDIATE 1 ;
+: RDX IMMEDIATE 2 ;
+: RBX IMMEDIATE 3 ;
+: RSP IMMEDIATE 4 ;
+: RBP IMMEDIATE 5 ;
+: RSI IMMEDIATE 6 ;
+: RDI IMMEDIATE 7 ;
+: R8  IMMEDIATE 8 ;
+: R9  IMMEDIATE 9 ;
+: R10 IMMEDIATE A ;
+: R11 IMMEDIATE B ;
+: R12 IMMEDIATE C ;
+: R13 IMMEDIATE D ;
+: R14 IMMEDIATE E ;
+: R15 IMMEDIATE F ;
+
+( assembler stack instructions )
+: PUSH IMMEDIATE DUP 7 > IF 41 C, 2 / THEN 50 + C, ;
+: POP IMMEDIATE DUP 7 > IF 41 C, 2 / THEN 58 + C, ;
+
+: REP IMMEDIATE F3 C, ;
+: MOVSB IMMEDIATE A4 C, ;
+: MOVSQ IMMEDIATE 48 C, A5 C, ;
+
+: STOSB IMMEDIATE AA C, ;
+: STOSQ IMMEDIATE 48 C, AB C, ;
+: LODSQ IMMEDIATE 48 C, AD C, ;
+
+: SHLQ IMMEDIATE ( reg count -- )
+	SWAP DUP 7 > IF 2 / 49 C, ELSE 48 C, THEN ( REX.W(B) )
+	C1 C, ( Opcode )
+	C0 OR C, ( /7 )
+	C, ( imm8 )
+;
+
+: REX.W ( dest-reg src-reg -- dest src )
+	DUP 7 > IF 1 RSHIFT 49 ELSE 48 THEN
+	ROT
+	DUP 7 > IF 1 RSHIFT SWAP 4 OR ELSE SWAP THEN
+	C,
+	SWAP
+;
+
+: MODR/M ( dest src -- )
+	3 LSHIFT C0 OR OR C,
+;
+
+: ORQ  IMMEDIATE ( dest-reg src-reg -- ) REX.W 09 C, MODR/M ;
+: MOVQ IMMEDIATE ( dest-reg src-reg -- ) REX.W 89 C, MODR/M ;
+
+( RDTSC instruction )
+: RDTSC IMMEDIATE 0F C, 31 C, ;
+
+HIDE REX.W
+HIDE MODR/M
+
+DECIMAL
+
+(
+	RDTSC is an assembler primitive which reads the Pentium timestamp counter (a very fine-
+	grained counter which counts processor clock cycles).
+)
+: RDTSC	( -- u )
+	RDTSC				\ writes the result in %edx:%eax
+	RDX [ 32 ] SHLQ
+	RAX RDX ORQ
+	RAX PUSH
+;CODE
+
+( C@C! is a useful byte copy primitive )
+: C@C!
+	RDX RSI MOVQ
+	RDI POP
+	RSI POP
+	MOVSB
+	RSI PUSH
+	RDI PUSH
+	RSI RDX MOVQ
+;CODE
+
+: CMOVE
+	RDX RSI MOVQ
+	RCX POP
+	RDI POP
+	RSI POP
+	REP MOVSB
+	RSI RDX MOVQ
+;CODE
+
+: MOVE
+	RDX RSI MOVQ
+	RCX POP
+	RDI POP
+	RSI POP
+	REP MOVSQ
+	RSI RDX MOVQ
+;CODE
+
+: FILL	( c-addr u char -- )
+(	If u is greater than zero, store char in each of u consecutive
+	characters of memory beginning at c-addr.
+)
+	RAX POP
+	RCX POP
+	RDI POP
+	REP STOSB
+;CODE
+
+(
+	INLINE can be used to inline an assembler primitive into the current (assembler)
+	word.
+
+	For example:
+
+		: 2DROP INLINE DROP INLINE DROP ;CODE
+
+	will build an efficient assembler word 2DROP which contains the inline assembly code
+	for DROP followed by DROP (eg. two 'pop %eax' instructions in this case).
+
+	Another example.  Consider this ordinary FORTH definition:
+
+		: C@++ ( addr -- addr+1 byte ) DUP 1+ SWAP C@ ;
+
+	(it is equivalent to the C operation '*p++' where p is a pointer to char).  If we
+	notice that all of the words used to define C@++ are in fact assembler primitives,
+	then we can write a faster (but equivalent) definition like this:
+
+		: C@++ INLINE DUP INLINE 1+ INLINE SWAP INLINE C@ ;CODE
+
+	One interesting point to note is that this "concatenative" style of programming
+	allows you to write assembler words portably.  The above definition would work
+	for any CPU architecture.
+
+	There are several conditions that must be met for INLINE to be used successfully:
+
+	(1) You must be currently defining an assembler word (ie. : ... ;CODE).
+
+	(2) The word that you are inlining must be known to be an assembler word.  If you try
+	to inline a FORTH word, you'll get an error message.
+
+	(3) The assembler primitive must be position-independent code and must end with a
+	single NEXT macro.
+
+	Exercises for the reader: (a) Generalise INLINE so that it can inline FORTH words when
+	building FORTH words. (b) Further generalise INLINE so that it does something sensible
+	when you try to inline FORTH into assembler and vice versa.
+
+	The implementation of INLINE is pretty simple.  We find the word in the dictionary,
+	check it's an assembler word, then copy it into the current definition, byte by byte,
+	until we reach the NEXT macro (which is not copied).
+)
+
+( (INLINE) is the lowlevel inline function. )
+: (INLINE)	( cfa -- )
+	@			( remember codeword points to the code )
+	BEGIN			( copy bytes until we hit NEXT macro )
+		DUP =NEXT NOT
+	WHILE
+		DUP C@ C,
+		1+
+	REPEAT
+	DROP
+;
+
+: INLINE IMMEDIATE
+	WORD FIND		( find the word in the dictionary )
+	>CFA			( codeword )
+
+	DUP @ DOCOL = IF	( check codeword <> DOCOL (ie. not a FORTH word) )
+		." Cannot INLINE FORTH words" CR ABORT
+	THEN
+
+	(INLINE)
+;
+
+HIDE =NEXT
 
 (
 	C STRINGS ----------------------------------------------------------------------
@@ -1384,7 +1793,7 @@
 									should be consumed / copied immediately.
 									FORTH string should not contain NULs.
 
-	For example, DUP STRLEN TELL prints a C string.
+	For example, DUP STRLEN TYPE prints a C string.
 )
 
 (
@@ -1412,9 +1821,9 @@
 		DROP		( drop the double quote character at the end )
 		DUP		( get the saved address of the length word )
 		HERE @ SWAP -	( calculate the length )
-		4-		( subtract 4 (because we measured from the start of the length word) )
+		1 CELLS -	( subtract 8 (because we measured from the start of the length word) )
 		SWAP !		( and back-fill the length location )
-		ALIGN		( round up to next multiple of 4 bytes for the remaining code )
+		ALIGN		( round up to next multiple of 8 bytes for the remaining code )
 		' DROP ,	( compile DROP (to drop the length) )
 	ELSE		( immediate mode )
 		HERE @		( get the start address of the temporary space )
@@ -1443,7 +1852,7 @@
 ;
 
 : CSTRING	( addr len -- c-addr )
-	SWAP OVER	( len saddr len )
+	TUCK		( len saddr len )
 	HERE @ SWAP	( len saddr daddr len )
 	CMOVE		( len )
 
@@ -1464,7 +1873,7 @@
 
 	Starting at S0, S0 itself points to argc (the number of command line arguments).
 
-	S0+4 points to argv[0], S0+8 points to argv[1] etc up to argv[argc-1].
+	S0+8 points to argv[0], S0+16 points to argv[1] etc up to argv[argc-1].
 
 	argv[argc] is a NULL pointer.
 
@@ -1482,7 +1891,7 @@
 	n ARGV gets the nth command line argument.
 
 	For example to print the command name you would do:
-		0 ARGV TELL CR
+		0 ARGV TYPE CR
 )
 : ARGV ( n -- str u )
 	1+ CELLS S0 @ +	( get the address of argv[n] entry )
@@ -1495,7 +1904,7 @@
 	with a NULL pointer.
 
 	For example to print the first string in the environment you could do:
-		ENVIRON @ DUP STRLEN TELL
+		ENVIRON @ DUP STRLEN TYPE
 )
 : ENVIRON	( -- addr )
 	ARGC		( number of command line parameters on the stack to skip )
@@ -1531,7 +1940,7 @@
 	GET-BRK		( get end of data segment according to the kernel )
 	HERE @		( get current position in data segment )
 	-
-	4 /		( returns number of cells )
+	1 CELLS /		( returns number of cells )
 ;
 
 (
@@ -1618,150 +2027,11 @@
 	list of strerror strings available, so all we can do is print the errno.
 )
 : PERROR	( errno addr u -- )
-	TELL
+	TYPE
 	':' EMIT SPACE
 	." ERRNO="
 	. CR
 ;
-
-(
-	ASSEMBLER CODE ----------------------------------------------------------------------
-
-	This is just the outline of a simple assembler, allowing you to write FORTH primitives
-	in assembly language.
-
-	Assembly primitives begin ': NAME' in the normal way, but are ended with ;CODE.  ;CODE
-	updates the header so that the codeword isn't DOCOL, but points instead to the assembled
-	code (in the DFA part of the word).
-
-	We provide a convenience macro NEXT (you guessed what it does).  However you don't need to
-	use it because ;CODE will put a NEXT at the end of your word.
-
-	The rest consists of some immediate words which expand into machine code appended to the
-	definition of the word.  Only a very tiny part of the i386 assembly space is covered, just
-	enough to write a few assembler primitives below.
-)
-
-HEX
-
-( Equivalent to the NEXT macro )
-: NEXT IMMEDIATE AD C, FF C, 20 C, ;
-
-: ;CODE IMMEDIATE
-	[COMPILE] NEXT		( end the word with NEXT macro )
-	ALIGN			( machine code is assembled in bytes so isn't necessarily aligned at the end )
-	LATEST @ DUP
-	HIDDEN			( unhide the word )
-	DUP >DFA SWAP >CFA !	( change the codeword to point to the data area )
-	[COMPILE] [		( go back to immediate mode )
-;
-
-( The i386 registers )
-: EAX IMMEDIATE 0 ;
-: ECX IMMEDIATE 1 ;
-: EDX IMMEDIATE 2 ;
-: EBX IMMEDIATE 3 ;
-: ESP IMMEDIATE 4 ;
-: EBP IMMEDIATE 5 ;
-: ESI IMMEDIATE 6 ;
-: EDI IMMEDIATE 7 ;
-
-( i386 stack instructions )
-: PUSH IMMEDIATE 50 + C, ;
-: POP IMMEDIATE 58 + C, ;
-
-( RDTSC instruction )
-: RDTSC IMMEDIATE 0F C, 31 C, ;
-
-DECIMAL
-
-(
-	RDTSC is an assembler primitive which reads the Pentium timestamp counter (a very fine-
-	grained counter which counts processor clock cycles).  Because the TSC is 64 bits wide
-	we have to push it onto the stack in two slots.
-)
-: RDTSC		( -- lsb msb )
-	RDTSC		( writes the result in %edx:%eax )
-	EAX PUSH	( push lsb )
-	EDX PUSH	( push msb )
-;CODE
-
-(
-	INLINE can be used to inline an assembler primitive into the current (assembler)
-	word.
-
-	For example:
-
-		: 2DROP INLINE DROP INLINE DROP ;CODE
-
-	will build an efficient assembler word 2DROP which contains the inline assembly code
-	for DROP followed by DROP (eg. two 'pop %eax' instructions in this case).
-
-	Another example.  Consider this ordinary FORTH definition:
-
-		: C@++ ( addr -- addr+1 byte ) DUP 1+ SWAP C@ ;
-
-	(it is equivalent to the C operation '*p++' where p is a pointer to char).  If we
-	notice that all of the words used to define C@++ are in fact assembler primitives,
-	then we can write a faster (but equivalent) definition like this:
-
-		: C@++ INLINE DUP INLINE 1+ INLINE SWAP INLINE C@ ;CODE
-
-	One interesting point to note is that this "concatenative" style of programming
-	allows you to write assembler words portably.  The above definition would work
-	for any CPU architecture.
-
-	There are several conditions that must be met for INLINE to be used successfully:
-
-	(1) You must be currently defining an assembler word (ie. : ... ;CODE).
-
-	(2) The word that you are inlining must be known to be an assembler word.  If you try
-	to inline a FORTH word, you'll get an error message.
-
-	(3) The assembler primitive must be position-independent code and must end with a
-	single NEXT macro.
-
-	Exercises for the reader: (a) Generalise INLINE so that it can inline FORTH words when
-	building FORTH words. (b) Further generalise INLINE so that it does something sensible
-	when you try to inline FORTH into assembler and vice versa.
-
-	The implementation of INLINE is pretty simple.  We find the word in the dictionary,
-	check it's an assembler word, then copy it into the current definition, byte by byte,
-	until we reach the NEXT macro (which is not copied).
-)
-HEX
-: =NEXT		( addr -- next? )
-	   DUP C@ AD <> IF DROP FALSE EXIT THEN
-	1+ DUP C@ FF <> IF DROP FALSE EXIT THEN
-	1+     C@ 20 <> IF      FALSE EXIT THEN
-	TRUE
-;
-DECIMAL
-
-( (INLINE) is the lowlevel inline function. )
-: (INLINE)	( cfa -- )
-	@			( remember codeword points to the code )
-	BEGIN			( copy bytes until we hit NEXT macro )
-		DUP =NEXT NOT
-	WHILE
-		DUP C@ C,
-		1+
-	REPEAT
-	DROP
-;
-
-: INLINE IMMEDIATE
-	WORD FIND		( find the word in the dictionary )
-	>CFA			( codeword )
-
-	DUP @ DOCOL = IF	( check codeword <> DOCOL (ie. not a FORTH word) )
-		." Cannot INLINE FORTH words" CR ABORT
-	THEN
-
-	(INLINE)
-;
-
-HIDE =NEXT
 
 (
 	NOTES ----------------------------------------------------------------------
@@ -1776,13 +2046,43 @@ HIDE =NEXT
 	Print the version and OK prompt.
 )
 
+: COUNT-WORDS
+	>CFA @ DOCOL = IF
+		1+
+	ELSE
+		SWAP 1+ SWAP
+	THEN
+	TRUE
+;
+
+: ?WELCOME-MESSAGE
+	1
+	BEGIN
+		DUP ARGC <
+	WHILE
+		DUP ARGV S" --no-welcome-message" COMPARE 0= IF
+			DROP FALSE EXIT
+		THEN
+		DUP ARGV S" --" COMPARE 0= IF
+			DROP ARGC
+		THEN
+		1+
+	REPEAT
+	DROP
+	TRUE
+;
+
 : WELCOME
-	S" TEST-MODE" FIND NOT IF
+	?WELCOME-MESSAGE IF
 		." JONESFORTH VERSION " VERSION . CR
+		0 0 ' COUNT-WORDS LATEST @ TRAVERSE-WORDLIST 2DUP +
+		. ." WORDS (" . ." FORTH, " . ." ASM)" CR
 		UNUSED . ." CELLS REMAINING" CR
 		." OK "
 	THEN
 ;
+HIDE COUNT-WORDS
+HIDE ?WELCOME-MESSAGE
 
 WELCOME
 HIDE WELCOME
