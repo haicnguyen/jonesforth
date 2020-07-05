@@ -1226,6 +1226,36 @@ var_\name :
 	lea 8(%rbp),%rbp		// pop return stack and throw away
 	NEXT
 
+	defcode "R@",2,,RFETCH
+	mov (%rbp),%rax
+	push %rax
+	NEXT
+
+	defcode "2R@",3,,TwoRFETCH
+	mov (%rbp),%rax
+	mov 8(%rbp),%rdx
+	push %rdx
+	push %rax
+	NEXT
+
+	defcode "2>R",3,,TwoToR
+	mov (%rsp),%rax
+	mov 8(%rsp),%rdx
+	mov %rax,-16(%rbp)
+	mov %rdx,-8(%rbp)
+	lea 16(%rsp),%rsp
+	lea -16(%rbp),%rbp
+	NEXT
+
+	defcode "2R>",3,,TwoFromR
+	mov (%rbp),%rax
+	mov 8(%rbp),%rdx
+	mov %rax,-16(%rsp)
+	mov %rdx,-8(%rsp)
+	lea 16(%rbp),%rbp
+	lea -16(%rsp),%rsp
+	NEXT
+
 /*
 	PARAMETER (DATA) STACK ----------------------------------------------------------------------
 

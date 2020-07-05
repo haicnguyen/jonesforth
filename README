@@ -4,7 +4,7 @@ Changes since version 47:
 Port to x86-64 assembler.
 Add very basic disassembler.
 Link slightly stripped FORTH code into binary for a standalone executable.
-Added: /STRING ABS CELL+ COMPARE COUNT FILL MAX MIN MOVE NAME>STRING ROLL TRAVERSE-WORDLIST
+Added: /STRING 2R@ 2>R 2R> ABS CELL+ COMPARE COUNT FILL MAX MIN MOVE NAME>STRING R@ ROLL TRAVERSE-WORDLIST
 Enhanced: ' SEE RDTSC
 Renamed: TELL -> TYPE
 Removed: 4+ 4-

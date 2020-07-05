@@ -816,20 +816,21 @@ HIDE cmp
 ;
 
 : TRAVERSE-WORDLIST ( i*x xt wid -- i*x' )
-	SWAP >R >R			( clear the stack )
+	2>R				( xt wid -- ) ( R: -- xt wid )
 	BEGIN
-		RSP@ @ 0<>
+		R@ 0<>
 	WHILE
-		RSP@ @ ?HIDDEN
-		RSP@ @ CELL+ C@ F_LENMASK AND 0=
-		OR UNLESS	( skip hidden words )
-			R> R> 2DUP >R >R EXECUTE UNLESS
-				R> R> 2DROP EXIT
+		R@ ?HIDDEN
+		R@ CELL+ C@ F_LENMASK AND 0=
+		OR UNLESS
+			2R@ SWAP	( -- wid xt ) ( R: xt wid -- xt wid )
+			EXECUTE UNLESS
+				2R> 2DROP EXIT
 			THEN
 		THEN
-		R> @ >R		( follow the link pointer )
+		R> @ >R			( -- ) ( R: wid -- wid )
 	REPEAT
-	R> R> 2DROP
+	2R> 2DROP			( -- ) ( R: xt wid -- )
 ;
 
 (
