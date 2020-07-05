@@ -815,27 +815,22 @@ HIDE cmp
 	F_IMMED AND	( mask the F_IMMED flag and return it (as a truth value) )
 ;
 
-0 VALUE WID
-0 VALUE XT
-
 : TRAVERSE-WORDLIST ( i*x xt wid -- i*x' )
-	TO WID TO XT			( clear the stack )
+	SWAP >R >R			( clear the stack )
 	BEGIN
-		WID 0<>
+		RSP@ @ 0<>
 	WHILE
-		WID ?HIDDEN
-		WID CELL+ C@ F_LENMASK AND 0=
+		RSP@ @ ?HIDDEN
+		RSP@ @ CELL+ C@ F_LENMASK AND 0=
 		OR UNLESS	( skip hidden words )
-			WID XT EXECUTE UNLESS
-				EXIT
+			R> R> 2DUP >R >R EXECUTE UNLESS
+				R> R> 2DROP EXIT
 			THEN
 		THEN
-		WID @ TO WID		( follow the link pointer )
+		R> @ >R		( follow the link pointer )
 	REPEAT
+	R> R> 2DROP
 ;
-
-HIDE XT
-HIDE WID
 
 (
 	WORDS prints all the words defined in the dictionary, starting with the word defined most recently.
