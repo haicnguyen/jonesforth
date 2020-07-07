@@ -781,6 +781,63 @@ HIDE cmp
 	THEN
 ;
 
+( DO is a little bit more complicated. )
+
+32 CELLS ALLOT CONSTANT CF-STACK
+0 VALUE CF-PTR
+
+: CF-TOP CF-STACK CF-PTR 1- CELLS + ;
+: CF-PUSH CF-STACK CF-PTR CELLS + ! 1 +TO CF-PTR ;
+: CF-DROP -1 +TO CF-PTR ;
+: CF-ADD CF-TOP @ 1+ SWAP CF-TOP ! CF-PUSH ;
+: CF-REMOVE CF-TOP @ 1- -1 +TO CF-PTR CF-TOP @ SWAP -1 +TO CF-PTR CF-PUSH ;
+
+: DO IMMEDIATE
+	' 2>R ,				\ Push loop parameters onto return stack
+	HERE @				\ Push loop start onto data stack
+	0 CF-PUSH			\ Count of LEAVE locations
+;
+
+: I IMMEDIATE ' R@ , ;
+: J IMMEDIATE ' RSP@ , ' LIT , 2 , ' CELLS , ' + , ' @ , ;
+
+: UNLOOP IMMEDIATE ' RDROP DUP , , ;
+
+: LEAVE IMMEDIATE
+	' BRANCH ,
+	HERE @ CF-ADD
+	0 ,
+;
+
+: +LOOP IMMEDIATE
+	' 2R> , ' ROT , ' DUP ,
+	' 0< , [COMPILE] IF
+		' + , ' 2DUP , ' 2>R , ' SWAP , ' 1- , ' = ,
+	[COMPILE] ELSE
+		' + , ' 2DUP , ' 2>R , ' = ,
+	[COMPILE] THEN
+	' 0BRANCH ,
+	HERE @ - ,
+	( resolve the LEAVE jump locations )
+	BEGIN
+		CF-TOP @
+	WHILE
+		CF-REMOVE HERE @ OVER - SWAP !
+	REPEAT
+	CF-DROP
+	[COMPILE] UNLOOP
+;
+
+: LOOP IMMEDIATE ' LIT , 1 , [COMPILE] +LOOP ;
+
+HIDE CF-STACK
+HIDE CF-PTR
+HIDE CF-TOP
+HIDE CF-PUSH
+HIDE CF-ADD
+HIDE CF-REMOVE
+HIDE CF-DROP
+
 (
 	PRINTING THE DICTIONARY ----------------------------------------------------------------------
 
@@ -818,19 +875,19 @@ HIDE cmp
 : TRAVERSE-WORDLIST ( i*x xt wid -- i*x' )
 	2>R				( xt wid -- ) ( R: -- xt wid )
 	BEGIN
-		R@ 0<>
+		R@ 0<>			( link pointer not null )
 	WHILE
 		R@ ?HIDDEN
 		R@ CELL+ C@ F_LENMASK AND 0=
-		OR UNLESS
+                OR UNLESS		( skip if for is hidden or anonymous )
 			2R@ SWAP	( -- wid xt ) ( R: xt wid -- xt wid )
-			EXECUTE UNLESS
+			EXECUTE UNLESS	( i*x wid xt -- i*x' )
 				2R> 2DROP EXIT
 			THEN
 		THEN
-		R> @ >R			( -- ) ( R: wid -- wid )
+		R> @ >R			( follow the link pointer )
 	REPEAT
-	2R> 2DROP			( -- ) ( R: xt wid -- )
+	2R> 2DROP			( restore return stack )
 ;
 
 (

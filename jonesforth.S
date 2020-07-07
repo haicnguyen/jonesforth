@@ -1360,6 +1360,14 @@ bufftop:
 	.quad buffer
 #endif
 
+	defcode "SOURCE",6,,SOURCE	// does not work during rc
+	mov $buffer,%rax
+	mov (bufftop),%rcx
+	sub %rax,%rcx
+	push %rax
+	push %rcx
+	NEXT
+
 /*
 	By contrast, output is much simpler.  The FORTH word EMIT writes out a single byte to stdout.
 	This implementation just uses the write system call.  No attempt is made to buffer output, but
@@ -1861,8 +1869,8 @@ _TCFA:
 	Because I want to define : (COLON) in FORTH, not assembler, we need a few more FORTH words
 	to use.
 
-	The first is , (COMMA) which is a standard FORTH word which appends a 32 bit integer to the user
-	memory pointed to by HERE, and adds 4 to HERE.  So the action of , (COMMA) is:
+	The first is , (COMMA) which is a standard FORTH word which appends a 64 bit integer to the user
+	memory pointed to by HERE, and adds 8 to HERE.  So the action of , (COMMA) is:
 
 							previous value of HERE
 								 |
@@ -1874,7 +1882,7 @@ _TCFA:
 									      |
 									new value of HERE
 
-	and <data> is whatever 32 bit integer was at the top of the stack.
+	and <data> is whatever 64 bit integer was at the top of the stack.
 
 	, (COMMA) is quite a fundamental operation when compiling.  It is used to append codewords
 	to the current word that is being compiled.

@@ -29,7 +29,7 @@ test check: $(TESTS)
 test_%.test: test_%.f jonesforth
 	@echo -n "$< ... "
 	@rm -f .$@
-	@cat $< <(echo 'TEST') | \
+	@cat ttester.f $< <(echo 'TEST') | \
 	  ./jonesforth --no-welcome-message 2>&1 | \
 	  sed 's/DSP=[0-9]*//g' > .$@
 	@diff -u .$@ $<.out
