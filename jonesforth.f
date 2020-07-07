@@ -791,6 +791,8 @@ HIDE cmp
 : CF-DROP -1 +TO CF-PTR ;
 : CF-ADD CF-TOP @ 1+ SWAP CF-TOP ! CF-PUSH ;
 : CF-REMOVE CF-TOP @ 1- -1 +TO CF-PTR CF-TOP @ SWAP -1 +TO CF-PTR CF-PUSH ;
+HIDE CF-STACK
+HIDE CF-PTR
 
 : DO IMMEDIATE
 	' 2>R ,				\ Push loop parameters onto return stack
@@ -809,34 +811,41 @@ HIDE cmp
 	0 ,
 ;
 
-: +LOOP IMMEDIATE
-	' 2R> , ' ROT , ' DUP ,
-	' 0< , [COMPILE] IF
-		' + , ' 2DUP , ' 2>R , ' SWAP , ' 1- , ' = ,
-	[COMPILE] ELSE
-		' + , ' 2DUP , ' 2>R , ' = ,
-	[COMPILE] THEN
-	' 0BRANCH ,
-	HERE @ - ,
-	( resolve the LEAVE jump locations )
+: RESOLVE-LEAVE
 	BEGIN
 		CF-TOP @
 	WHILE
 		CF-REMOVE HERE @ OVER - SWAP !
 	REPEAT
 	CF-DROP
+;
+
+: +LOOP IMMEDIATE
+	' 2R> , ' ROT , ' DUP , ' 0< , [COMPILE] IF
+		' + , ' 2DUP , ' 2>R , ' SWAP , ' 1- , ' = ,
+	[COMPILE] ELSE
+		' + , ' 2DUP , ' 2>R , ' = ,
+	[COMPILE] THEN
+	' 0BRANCH ,
+	HERE @ - ,
+	RESOLVE-LEAVE
 	[COMPILE] UNLOOP
 ;
 
-: LOOP IMMEDIATE ' LIT , 1 , [COMPILE] +LOOP ;
+: LOOP IMMEDIATE
+	' 2R> , ' 1+ , ' 2DUP , ' 2>R , ' = ,
+	' 0BRANCH ,
+	HERE @ - ,
+	RESOLVE-LEAVE
+	[COMPILE] UNLOOP
+;
 
-HIDE CF-STACK
-HIDE CF-PTR
 HIDE CF-TOP
 HIDE CF-PUSH
 HIDE CF-ADD
 HIDE CF-REMOVE
 HIDE CF-DROP
+HIDE RESOLVE-LEAVE
 
 (
 	PRINTING THE DICTIONARY ----------------------------------------------------------------------
