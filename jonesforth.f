@@ -2084,6 +2084,55 @@ HIDE =NEXT
 	THEN
 ;
 
+: days-per-year
+  DUP 400 MOD 0= IF DROP 366 ELSE
+  DUP 100 MOD 0= IF DROP 365 ELSE
+        4 MOD 0= IF 366 ELSE 365 THEN THEN THEN
+;
+
+: day-of-year>month-day ( february-days day-of-year -- month day )
+  1 SWAP
+  DUP 31 > IF 31 - SWAP 1+ SWAP ELSE ROT DROP EXIT THEN
+  DUP 3 PICK TUCK > IF - SWAP 1+ SWAP ELSE NIP ROT DROP EXIT THEN
+  DUP 31 > IF 31 - SWAP 1+ SWAP ELSE ROT DROP EXIT THEN
+  DUP 30 > IF 30 - SWAP 1+ SWAP ELSE ROT DROP EXIT THEN
+  DUP 31 > IF 31 - SWAP 1+ SWAP ELSE ROT DROP EXIT THEN
+  DUP 30 > IF 30 - SWAP 1+ SWAP ELSE ROT DROP EXIT THEN
+  DUP 31 > IF 31 - SWAP 1+ SWAP ELSE ROT DROP EXIT THEN
+  DUP 31 > IF 31 - SWAP 1+ SWAP ELSE ROT DROP EXIT THEN
+  DUP 30 > IF 30 - SWAP 1+ SWAP ELSE ROT DROP EXIT THEN
+  DUP 31 > IF 31 - SWAP 1+ SWAP ELSE ROT DROP EXIT THEN
+  DUP 30 > IF 30 - SWAP 1+ SWAP ELSE ROT DROP EXIT THEN
+  ROT DROP
+;
+
+: (TIME&DATE)
+	86400 /MOD
+	1970
+	BEGIN
+		OVER OVER days-per-year >
+	WHILE
+		DUP days-per-year SWAP 1+ ROT ROT - SWAP
+	REPEAT
+	>R
+	1+
+	R@ days-per-year 366 = IF 29 ELSE 28 THEN SWAP day-of-year>month-day
+	2>R
+	3600 /MOD >R
+	60 /MOD R>
+	R> R> R>
+;
+HIDE day-of-year>month-day
+HIDE days-per-year
+
+: TIME&DATE
+	HERE @ 0 SYS_CLOCK_GETTIME SYSCALL2 0= IF
+		HERE @ @ (TIME&DATE)
+	ELSE
+		0 0 0 0 0 0
+	THEN
+;
+
 (
 	PERROR prints a message for an errno, similar to C's perror(3) but we don't have the extensive
 	list of strerror strings available, so all we can do is print the errno.

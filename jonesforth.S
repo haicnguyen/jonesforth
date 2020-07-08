@@ -1187,6 +1187,7 @@ var_\name :
 	defconst "SYS_WRITE",9,,SYS_WRITE,__NR_write
 	defconst "SYS_CREAT",9,,SYS_CREAT,__NR_creat
 	defconst "SYS_BRK",7,,SYS_BRK,__NR_brk
+	defconst "SYS_CLOCK_GETTIME",17,,SYS_CLOCK_GETTIME,__NR_clock_gettime
 
 	defconst "O_RDONLY",8,,__O_RDONLY,0
 	defconst "O_WRONLY",8,,__O_WRONLY,1
@@ -2323,7 +2324,7 @@ interpret_is_lit:
 	You don't need to worry about this code.
 */
 	.text
-	.set INITIAL_DATA_SEGMENT_SIZE,0x8000
+	.set INITIAL_DATA_SEGMENT_SIZE,0x10000
 set_up_data_segment:
 	xor %rdi,%rdi		// Call brk(0)
 	mov $__NR_brk,%rax
