@@ -1147,6 +1147,7 @@ var_\name :
 	defvar "LATEST",6,,LATEST,name_SYSCALL0 // SYSCALL0 must be last in built-in dictionary
 	defvar "S0",2,,SZ
 	defvar "BASE",4,,BASE,10
+	defvar "SOURCE_FD",9,,SOURCE_FD,0
 
 /*
 	BUILT-IN CONSTANTS ----------------------------------------------------------------------
@@ -1329,8 +1330,8 @@ _KEY:
 1:	// Out of input; use read(2) to fetch more input from stdin.
 	push %rdi
 	push %rsi
-	xor %rdi,%rdi		// 1st param: stdin
-	mov $buffer,%rsi	// 2nd param: buffer
+	mov (var_SOURCE_FD),%rdi		// 1st param: stdin
+	mov $buffer,%rsi		// 2nd param: buffer
 	mov %rsi,currkey
 	mov $BUFFER_SIZE,%rdx	// 3rd param: max length
 	mov $__NR_read,%rax	// syscall: read
