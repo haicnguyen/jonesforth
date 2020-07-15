@@ -1,10 +1,14 @@
 This is a port of Richard Jones forth to x86-64 assembly.
 
+I'd like to explicitly say thank you to the original author of this stellar tutorial.
+
 Changes since version 47:
 Port to x86-64 assembler.
 Add very basic disassembler.
 Link slightly stripped FORTH code into binary for a standalone executable.
-Added: /STRING 2R@ 2>R 2R> ABS CELL+ COMPARE COUNT FILL MAX MIN MOVE NAME>STRING R@ ROLL TRAVERSE-WORDLIST
+Support hashbang scripts.
+Added: /STRING 2R@ 2>R 2R> ABS CELL+ COMPARE COUNT FILL MAX MIN MOVE MS NAME>STRING R@ ROLL TIME&DATE TRAVERSE-WORDLIST
+Fixed: /MOD, DEPTH
 Enhanced: ' SEE RDTSC
 Renamed: TELL -> TYPE
 Removed: 4+ 4-
